@@ -31,6 +31,9 @@
 //     Robotics: Science and Systems Conference (RSS). Berkeley, CA, July 2014.
 //   T. Shan and B. Englot. LeGO-LOAM: Lightweight and Ground-Optimized Lidar Odometry and Mapping on Variable Terrain
 //      IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS). October 2018.
+//
+// With respect to the design of SSDAS mobile mapping backpack, the file and codes
+// have been modified by Vincent WZ Fan. (15 Dec 2020)
 
 #include "utility.h"
 
@@ -63,13 +66,21 @@ private:
 
     PointType nanPoint; // fill in fullCloud at each iteration
 
+    cv::Mat rangeMatInit;
     cv::Mat rangeMat; // range matrix for range image
+    cv::Mat labelMatInit; // label matrix for segmentaiton marking
     cv::Mat labelMat; // label matrix for segmentaiton marking
+    cv::Mat groundMatInit; // ground matrix for ground cloud marking
     cv::Mat groundMat; // ground matrix for ground cloud marking
     int labelCount;
 
     float startOrientation;
     float endOrientation;
+    int iSlamSize;
+    int iPcdSize;
+    float startPcdOrientation;
+    float endPcdOrientation;
+    float orientationPcdDiff;
 
     cloud_msgs::cloud_info segMsg; // info of segmented cloud
     std_msgs::Header cloudHeader;
@@ -103,7 +114,7 @@ public:
         nanPoint.intensity = -1;
 
         allocateMemory();
-        resetParameters();
+        initParameters();
     }
 
     void allocateMemory(){
@@ -142,6 +153,31 @@ public:
         queueIndY = new uint16_t[N_SCAN*Horizon_SCAN];
     }
 
+    void initParameters(){
+        laserCloudIn->clear();
+        groundCloud->clear();
+        segmentedCloud->clear();
+        segmentedCloudPure->clear();
+        outlierCloud->clear();
+
+        iSlamSize = 0;
+        iPcdSize = 0;
+        startPcdOrientation = 0.0f;
+        endPcdOrientation = 0.0f;
+        orientationPcdDiff = 0.0f;
+
+        rangeMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_32F, cv::Scalar::all(FLT_MAX));
+        rangeMatInit = rangeMat;
+        groundMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_8S, cv::Scalar::all(0));
+        groundMatInit = groundMat;
+        labelMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_32S, cv::Scalar::all(0));
+        labelMatInit = labelMat;
+        labelCount = 1;
+
+        std::fill(fullCloud->points.begin(), fullCloud->points.end(), nanPoint);
+        std::fill(fullInfoCloud->points.begin(), fullInfoCloud->points.end(), nanPoint);
+    }
+
     void resetParameters(){
         laserCloudIn->clear();
         groundCloud->clear();
@@ -149,9 +185,15 @@ public:
         segmentedCloudPure->clear();
         outlierCloud->clear();
 
-        rangeMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_32F, cv::Scalar::all(FLT_MAX));
-        groundMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_8S, cv::Scalar::all(0));
-        labelMat = cv::Mat(N_SCAN, Horizon_SCAN, CV_32S, cv::Scalar::all(0));
+        iSlamSize = 0;
+        iPcdSize = 0;
+        startPcdOrientation = 0.0f;
+        endPcdOrientation = 0.0f;
+        orientationPcdDiff = 0.0f;
+
+        rangeMat = rangeMatInit;
+        groundMat = groundMatInit;
+        labelMat = labelMatInit;
         labelCount = 1;
 
         std::fill(fullCloud->points.begin(), fullCloud->points.end(), nanPoint);
@@ -201,20 +243,105 @@ public:
         segMsg.startOrientation = -atan2(laserCloudIn->points[0].y, laserCloudIn->points[0].x);
         segMsg.endOrientation   = -atan2(laserCloudIn->points[laserCloudIn->points.size() - 1].y,
                                                      laserCloudIn->points[laserCloudIn->points.size() - 1].x) + 2 * M_PI;
+
+        Eigen::Matrix4d m4dSSDASConversion = Eigen::Matrix4d::Identity();
+        m4dSSDASConversion(0,0) = 0.999990;    m4dSSDASConversion(0,1) = -0.000311;
+        m4dSSDASConversion(0,2) = -0.004357;    m4dSSDASConversion(0,3) = -0.000158;
+        m4dSSDASConversion(1,0) = -0.003873;    m4dSSDASConversion(1,1) = 0.398184;
+        m4dSSDASConversion(1,2) = -0.917297;    m4dSSDASConversion(1,3) = -0.255638;
+        m4dSSDASConversion(2,0) = 0.002020;    m4dSSDASConversion(2,1) = 0.917306;
+        m4dSSDASConversion(2,2) = 0.398179;    m4dSSDASConversion(2,3) = -0.172875;
+        Eigen::Affine3f a3fSSDASConversion; a3fSSDASConversion.matrix() = m4dSSDASConversion.cast<float>();
+
+        // search for the start of pcd cloud
+        iSlamSize = 0;
+        while(1){
+            PointType& ptThePt = laserCloudIn->points[iSlamSize];
+            //float angle = atan(ptThePt.z
+            //        / sqrt(pow(ptThePt.x, 2.0) + pow(ptThePt.y, 2.0))) * 180.0 / M_PI;
+            //int iScanID = int ((angle + 15.0) / 2 + 0.5);
+            int iScanID = round((ptThePt.intensity - floor(ptThePt.intensity)) * 100);
+            if (iScanID > 15)
+                break;
+            iSlamSize++;
+        }
+        iPcdSize = laserCloudIn->points.size() - iSlamSize;
+
+        segMsg.endOrientation = -atan2(laserCloudIn->points[iSlamSize - 1].y,
+                                       laserCloudIn->points[iSlamSize - 1].x) + 2 * M_PI;
+
         if (segMsg.endOrientation - segMsg.startOrientation > 3 * M_PI) {
             segMsg.endOrientation -= 2 * M_PI;
         } else if (segMsg.endOrientation - segMsg.startOrientation < M_PI)
             segMsg.endOrientation += 2 * M_PI;
         segMsg.orientationDiff = segMsg.endOrientation - segMsg.startOrientation;
+
+        // get information about pcd cloud
+        int iCloudSize = laserCloudIn->points.size();
+        // start from iSlamSize, end at iCloudSize
+        int iIndex = 0;
+        while (1)
+        {
+            PointType& ptThePt = laserCloudIn->points[iSlamSize + iIndex];
+            float fDist = pow(ptThePt.x, 2.0) + pow(ptThePt.y, 2.0) + pow(ptThePt.z, 2.0);
+            if (fDist > 0.25f)// 0.5 * 0.5
+                break;
+            iIndex++;
+            if (iIndex + iSlamSize == iCloudSize) {
+                iPcdSize = 0; startPcdOrientation = 0.0f; endPcdOrientation = 0.0f; orientationPcdDiff = 0.0f; return;
+            }
+        }
+
+        int iPcdStart = iSlamSize + iIndex;
+        iIndex = 0;
+        while (1)
+        {
+            PointType& ptThePt = laserCloudIn->points[iCloudSize - 1 - iIndex];
+            float fDist = pow(ptThePt.x, 2.0) + pow(ptThePt.y, 2.0) + pow(ptThePt.z, 2.0);
+            if (fDist > 0.25f)// 0.5 * 0.5
+                break;
+            iIndex++;
+            if (iIndex + iPcdStart == iCloudSize) {// should not happen
+                iPcdSize = 0; startPcdOrientation = 0.0f; endPcdOrientation = 0.0f; orientationPcdDiff = 0.0f; return;
+            }
+        }
+
+        int iPcdEnd = iPcdStart + iIndex;
+
+        PointType ptPcdStartPt = pcl::transformPoint(laserCloudIn->points[iPcdStart], a3fSSDASConversion);
+        PointType ptPcdEndPt = pcl::transformPoint(laserCloudIn->points[iPcdEnd], a3fSSDASConversion);
+
+        startPcdOrientation = -atan2(ptPcdStartPt.y, ptPcdStartPt.x);
+        endPcdOrientation   = -atan2(ptPcdEndPt.y, ptPcdEndPt.x) + 2 * M_PI;
+
+        if (endPcdOrientation - startPcdOrientation > 3 * M_PI) {
+            endPcdOrientation -= 2 * M_PI;
+        } else if (endPcdOrientation - startPcdOrientation < M_PI)
+            endPcdOrientation += 2 * M_PI;
+        orientationPcdDiff = endPcdOrientation - startPcdOrientation;
     }
 
-    void projectPointCloud(){
+    void projectPointCloud(){   // recover the point grid
         // range image projection
         float verticalAngle, horizonAngle, range;
         size_t rowIdn, columnIdn, index, cloudSize; 
         PointType thisPoint;
 
-        cloudSize = laserCloudIn->points.size();
+        float startOriSlam(startOrientation), startOriPcd(startPcdOrientation);
+        float endOriSlam(endOrientation), endOriPcd(endPcdOrientation);
+        int iSizeSlam(iSlamSize), iSizePcd(iPcdSize);
+
+        Eigen::Matrix4d m4dSSDASConversion = Eigen::Matrix4d::Identity();
+        m4dSSDASConversion(0,0) = 0.999990;    m4dSSDASConversion(0,1) = -0.000311;
+        m4dSSDASConversion(0,2) = -0.004357;    m4dSSDASConversion(0,3) = -0.000158;
+        m4dSSDASConversion(1,0) = -0.003873;    m4dSSDASConversion(1,1) = 0.398184;
+        m4dSSDASConversion(1,2) = -0.917297;    m4dSSDASConversion(1,3) = -0.255638;
+        m4dSSDASConversion(2,0) = 0.002020;    m4dSSDASConversion(2,1) = 0.917306;
+        m4dSSDASConversion(2,2) = 0.398179;    m4dSSDASConversion(2,3) = -0.172875;
+        Eigen::Affine3f a3fSSDASConversion; a3fSSDASConversion.matrix() = m4dSSDASConversion.cast<float>();
+
+        // for the first half - slam cloud
+        cloudSize = iSizeSlam; //laserCloudIn->points.size();
 
         for (size_t i = 0; i < cloudSize; ++i){
 
@@ -222,14 +349,14 @@ public:
             thisPoint.y = laserCloudIn->points[i].y;
             thisPoint.z = laserCloudIn->points[i].z;
             // find the row and column index in the iamge for this point
-            if (useCloudRing == true){
+            if (useCloudRing == true){// false by default
                 rowIdn = laserCloudInRing->points[i].ring;
             }
             else{
                 verticalAngle = atan2(thisPoint.z, sqrt(thisPoint.x * thisPoint.x + thisPoint.y * thisPoint.y)) * 180 / M_PI;
                 rowIdn = (verticalAngle + ang_bottom) / ang_res_y;
             }
-            if (rowIdn < 0 || rowIdn >= N_SCAN)
+            if (rowIdn < 0 || rowIdn >= N_SCAN - 16)// for 0-15
                 continue;
 
             horizonAngle = atan2(thisPoint.x, thisPoint.y) * 180 / M_PI;
@@ -254,6 +381,53 @@ public:
             fullInfoCloud->points[index] = thisPoint;
             fullInfoCloud->points[index].intensity = range; // the corresponding range of a point is saved as "intensity"
         }
+
+        // for the second half - pcd cloud
+        cloudSize = laserCloudIn->points.size();
+
+        for (size_t i = iSizeSlam; i < cloudSize; ++i){
+
+            thisPoint.x = laserCloudIn->points[i].x;
+            thisPoint.y = laserCloudIn->points[i].y;
+            thisPoint.z = laserCloudIn->points[i].z;
+
+            thisPoint = pcl::transformPoint(thisPoint, a3fSSDASConversion);
+
+            // find the row and column index in the iamge for this point
+            if (useCloudRing == true){// false by default
+                rowIdn = laserCloudInRing->points[i].ring;
+            }
+            else{
+                verticalAngle = atan2(thisPoint.z, sqrt(thisPoint.x * thisPoint.x + thisPoint.y * thisPoint.y)) * 180 / M_PI;
+                rowIdn = (verticalAngle + ang_bottom_pcd) / ang_res_y_pcd;
+            }
+            if (rowIdn < 0 || rowIdn >= N_SCAN - 16)// for 0-15
+                continue;
+            rowIdn += 16; // pcd rowID to all
+
+            horizonAngle = atan2(thisPoint.x, thisPoint.y) * 180 / M_PI;
+
+            columnIdn = -round((horizonAngle-90.0)/ang_res_x) + Horizon_SCAN/2;
+            if (columnIdn >= Horizon_SCAN)
+                columnIdn -= Horizon_SCAN;
+
+            if (columnIdn < 0 || columnIdn >= Horizon_SCAN)
+                continue;
+
+            range = sqrt(thisPoint.x * thisPoint.x + thisPoint.y * thisPoint.y + thisPoint.z * thisPoint.z);
+            if (range < sensorMinimumRange)
+                continue;
+
+            rangeMat.at<float>(rowIdn, columnIdn) = range;
+
+            thisPoint.intensity = (float)rowIdn + (float)columnIdn / 10000.0;
+
+            index = columnIdn  + rowIdn * Horizon_SCAN;
+            fullCloud->points[index] = thisPoint;
+            fullInfoCloud->points[index] = thisPoint;
+            fullInfoCloud->points[index].intensity = range; // the corresponding range of a point is saved as "intensity"
+        }
+
     }
 
 
@@ -299,7 +473,8 @@ public:
                 }
             }
         }
-        if (pubGroundCloud.getNumSubscribers() != 0){
+        std::cout << "pubGroundCloud " << pubGroundCloud.getNumSubscribers() << "\n";
+        if (true || pubGroundCloud.getNumSubscribers() != 0){
             for (size_t i = 0; i <= groundScanInd; ++i){
                 for (size_t j = 0; j < Horizon_SCAN; ++j){
                     if (groundMat.at<int8_t>(i,j) == 1)
@@ -355,7 +530,7 @@ public:
         }
         
         // extract segmented cloud for visualization
-        if (pubSegmentedCloudPure.getNumSubscribers() != 0){
+        if (true || pubSegmentedCloudPure.getNumSubscribers() != 0){
             for (size_t i = 0; i < N_SCAN; ++i){
                 for (size_t j = 0; j < Horizon_SCAN; ++j){
                     if (labelMat.at<int>(i,j) > 0 && labelMat.at<int>(i,j) != 999999){
@@ -467,38 +642,44 @@ public:
         // 2. Publish clouds
         sensor_msgs::PointCloud2 laserCloudTemp;
 
+        std::cout << outlierCloud->points.size() << "\t";
         pcl::toROSMsg(*outlierCloud, laserCloudTemp);
         laserCloudTemp.header.stamp = cloudHeader.stamp;
         laserCloudTemp.header.frame_id = "base_link";
         pubOutlierCloud.publish(laserCloudTemp);
         // segmented cloud with ground
+        std::cout << segmentedCloud->points.size() << "\t";
         pcl::toROSMsg(*segmentedCloud, laserCloudTemp);
         laserCloudTemp.header.stamp = cloudHeader.stamp;
         laserCloudTemp.header.frame_id = "base_link";
         pubSegmentedCloud.publish(laserCloudTemp);
         // projected full cloud
-        if (pubFullCloud.getNumSubscribers() != 0){
+        std::cout << fullCloud->points.size() << "\t";
+        if (true || pubFullCloud.getNumSubscribers() != 0){
             pcl::toROSMsg(*fullCloud, laserCloudTemp);
             laserCloudTemp.header.stamp = cloudHeader.stamp;
             laserCloudTemp.header.frame_id = "base_link";
             pubFullCloud.publish(laserCloudTemp);
         }
         // original dense ground cloud
-        if (pubGroundCloud.getNumSubscribers() != 0){
+        std::cout << groundCloud->points.size() << "\t";
+        if (true || pubGroundCloud.getNumSubscribers() != 0){
             pcl::toROSMsg(*groundCloud, laserCloudTemp);
             laserCloudTemp.header.stamp = cloudHeader.stamp;
             laserCloudTemp.header.frame_id = "base_link";
             pubGroundCloud.publish(laserCloudTemp);
         }
         // segmented cloud without ground
-        if (pubSegmentedCloudPure.getNumSubscribers() != 0){
+        std::cout << segmentedCloudPure->points.size() << "\t";
+        if (true || pubSegmentedCloudPure.getNumSubscribers() != 0){
             pcl::toROSMsg(*segmentedCloudPure, laserCloudTemp);
             laserCloudTemp.header.stamp = cloudHeader.stamp;
             laserCloudTemp.header.frame_id = "base_link";
             pubSegmentedCloudPure.publish(laserCloudTemp);
         }
         // projected full cloud info
-        if (pubFullInfoCloud.getNumSubscribers() != 0){
+        std::cout << fullInfoCloud->points.size() << "\n";
+        if (true || pubFullInfoCloud.getNumSubscribers() != 0){
             pcl::toROSMsg(*fullInfoCloud, laserCloudTemp);
             laserCloudTemp.header.stamp = cloudHeader.stamp;
             laserCloudTemp.header.frame_id = "base_link";
