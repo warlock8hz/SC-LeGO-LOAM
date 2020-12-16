@@ -76,10 +76,10 @@ extern const int N_SCAN = 32; // dual 16
 extern const int Horizon_SCAN = 900;    // 900 for 20 Hz, the rest will be dumped
 extern const float ang_res_x = 0.4; // 20 Hz
 extern const float ang_res_y = 2.0; // for SLAM scanner only
-extern const float ang_res_y_pcd = 20.0f / 30.0f;
+extern const float ang_res_y_pcd = 20.0f / 15.0f;
 extern const float ang_bottom = 15.0+0.1;   // rowID conversion
 extern const float ang_bottom_pcd = 10.0+0.1; // rowID conversion for pcd
-extern const int groundScanInd = 32; // try to check since
+extern const int groundScanInd = 7; // try to check since
 
 // HDL-32E
 // extern const int N_SCAN = 32;
