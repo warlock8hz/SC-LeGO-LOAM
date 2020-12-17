@@ -233,7 +233,36 @@ private:
     // // loop detector 
     SCManager scManager;
 
+    // frame id for logging
+    int iFrameId;
+
 public:
+
+    void logKfPoseASCII(PointTypePose& pose6D, int iFrameId)
+    {
+        std::string strPathName = "/home/g800g1/LocalData/keyFrame6DLog.txt";
+        std::time_t t = std::time(0);
+        std::tm* now = std::localtime(&t);
+        std::string strTime = std::to_string(1900 + now->tm_year) + '-'
+                              + std::to_string(1 + now->tm_mon) + '-'
+                              + std::to_string(now->tm_mday) + '-'
+                              + std::to_string(now->tm_hour) + '-'
+                              + std::to_string(now->tm_min) + '-'
+                              + std::to_string(now->tm_sec) + ',';
+
+        std::ofstream ofFile;
+        ofFile.open(strPathName, std::ios::out | std::ios::app);
+        ofFile << strTime << iFrameId << ',';
+        ofFile << std::fixed << std::setprecision(6)
+               << pose6D.time << ','
+               << pose6D.intensity << ','
+               << pose6D.roll << ','
+               << pose6D.pitch << ','
+               << pose6D.yaw << ','
+               << pose6D.x << ',' << pose6D.y << ',' << pose6D.z << "\n";
+
+        return;
+    }
 
     mapOptimization():
         nh("~")
@@ -392,6 +421,7 @@ public:
         aLoopIsClosed = false;
 
         latestFrameID = 0;
+        iFrameId = 0;
     }
 
     void transformAssociateToMap()
@@ -756,9 +786,9 @@ public:
         // save final point cloud
         pcl::io::savePCDFileASCII(fileDirectory+"finalCloud.pcd", *globalMapKeyFramesDS);
 
-        string cornerMapString = "/tmp/cornerMap.pcd";
-        string surfaceMapString = "/tmp/surfaceMap.pcd";
-        string trajectoryString = "/tmp/trajectory.pcd";
+        //string cornerMapString = "/tmp/cornerMap.pcd";
+        //string surfaceMapString = "/tmp/surfaceMap.pcd";
+        //string trajectoryString = "/tmp/trajectory.pcd";
 
         pcl::PointCloud<PointType>::Ptr cornerMapCloud(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr cornerMapCloudDS(new pcl::PointCloud<PointType>());
@@ -1528,7 +1558,8 @@ public:
         currentRobotPosPoint.y = transformAftMapped[4];
         currentRobotPosPoint.z = transformAftMapped[5];
 
-        bool saveThisKeyFrame = true;
+        bool saveThisKeyFrame = true; // true if a new keyframe is required
+        iFrameId++;
         if (sqrt((previousRobotPosPoint.x-currentRobotPosPoint.x)*(previousRobotPosPoint.x-currentRobotPosPoint.x)
                 +(previousRobotPosPoint.y-currentRobotPosPoint.y)*(previousRobotPosPoint.y-currentRobotPosPoint.y)
                 +(previousRobotPosPoint.z-currentRobotPosPoint.z)*(previousRobotPosPoint.z-currentRobotPosPoint.z)) < 0.3){ // save keyframe every 0.3 meter 
@@ -1586,7 +1617,7 @@ public:
         thisPose6D.x = thisPose3D.x;
         thisPose6D.y = thisPose3D.y;
         thisPose6D.z = thisPose3D.z;
-        thisPose6D.intensity = thisPose3D.intensity; // this can be used as index
+        thisPose6D.intensity = iFrameId - 1; //thisPose3D.intensity; // this can be used as index
         thisPose6D.roll  = latestEstimate.rotation().pitch();
         thisPose6D.pitch = latestEstimate.rotation().yaw();
         thisPose6D.yaw   = latestEstimate.rotation().roll(); // in camera frame
@@ -1658,6 +1689,8 @@ public:
                 cloudKeyPoses6D->points[i].pitch = isamCurrentEstimate.at<Pose3>(i).rotation().yaw();
                 cloudKeyPoses6D->points[i].yaw   = isamCurrentEstimate.at<Pose3>(i).rotation().roll();
             }
+
+            pcl::io::savePCDFileASCII(fileDirectory + "kfTrajectory.pcd", *cloudKeyPoses6D);
 
             aLoopIsClosed = false;
         }

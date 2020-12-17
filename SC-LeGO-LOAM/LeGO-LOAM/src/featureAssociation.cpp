@@ -1724,6 +1724,35 @@ public:
         transformSum[5] = tz;
     }
 
+    void logOdometerASCII(Eigen::Quaterniond q, double x, double y, double z, int iFrameId)
+    {
+        std::string strPathName = "/home/g800g1/LocalData/odoLog.txt";
+        std::time_t t = std::time(0);
+        std::tm* now = std::localtime(&t);
+        std::string strTime = std::to_string(1900 + now->tm_year) + '-'
+                              + std::to_string(1 + now->tm_mon) + '-'
+                              + std::to_string(now->tm_mday) + '-'
+                              + std::to_string(now->tm_hour) + '-'
+                              + std::to_string(now->tm_min) + '-'
+                              + std::to_string(now->tm_sec) + ',';
+        Eigen::Matrix3d m3dRot = q.normalized().toRotationMatrix();
+
+        Eigen::Matrix4d m4dRT; // = pcl::getTransformation(x, y, z, roll, pitch, yaw).matrix().cast<double>();
+        m4dRT.topLeftCorner(3,3) = m3dRot;
+        m4dRT(0,3) = x; m4dRT(1,3)= y; m4dRT(2,3) = z;
+
+        std::ofstream ofFile;
+        ofFile.open(strPathName, std::ios::out | std::ios::app);
+        ofFile << strTime << iFrameId << ',';
+        ofFile << std::fixed << std::setprecision(6)
+               << m4dRT(0,0) << ',' << m4dRT(0,1) << ',' << m4dRT(0,2) << ','
+               << m4dRT(1,0) << ',' << m4dRT(1,1) << ',' << m4dRT(1,2) << ','
+               << m4dRT(2,0) << ',' << m4dRT(2,1) << ',' << m4dRT(2,2) << ','
+               << x << ',' << y << ',' << z << "\n";
+
+        return;
+    }
+
     void publishOdometry(){
         geometry_msgs::Quaternion geoQuat = tf::createQuaternionMsgFromRollPitchYaw(transformSum[2], -transformSum[0], -transformSum[1]);
 
@@ -1736,6 +1765,17 @@ public:
         laserOdometry.pose.pose.position.y = transformSum[4];
         laserOdometry.pose.pose.position.z = transformSum[5];
         pubLaserOdometry.publish(laserOdometry);
+
+        Eigen::Quaterniond q_w_curr;
+        Eigen::Vector3d t_w_curr;
+        q_w_curr.x() = laserOdometry.pose.pose.orientation.x;
+        q_w_curr.y() = laserOdometry.pose.pose.orientation.y;
+        q_w_curr.z() = laserOdometry.pose.pose.orientation.z;
+        q_w_curr.w() = laserOdometry.pose.pose.orientation.w;
+        t_w_curr.x() = laserOdometry.pose.pose.position.x;
+        t_w_curr.y() = laserOdometry.pose.pose.position.y;
+        t_w_curr.z() = laserOdometry.pose.pose.position.z;
+        logOdometerASCII(q_w_curr, t_w_curr.x(), t_w_curr.y(), t_w_curr.z(), 0);
 
         laserOdometryTrans.stamp_ = cloudHeader.stamp;
         laserOdometryTrans.setRotation(tf::Quaternion(-geoQuat.y, -geoQuat.z, geoQuat.x, geoQuat.w));
