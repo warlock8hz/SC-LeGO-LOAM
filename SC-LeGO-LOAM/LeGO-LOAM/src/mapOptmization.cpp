@@ -815,22 +815,22 @@ public:
         pcl::io::savePCDFileASCII(fileDirectory+"trajectory.pcd", *cloudKeyPoses3D);
         pcl::io::savePCDFileASCII(fileDirectory+"final_trajectory.pcd", *cloudKeyPoses6D);
 
-        //pcl::PointCloud<PointType>::Ptr cornerMapCloudNoDS(new pcl::PointCloud<PointType>());
-        //pcl::PointCloud<PointType>::Ptr surfMapCloudNoDS(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr cornerMapCloudNoDS(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr surfMapCloudNoDS(new pcl::PointCloud<PointType>());
 
-        pcl::PointCloud<PointType>::Ptr frameMapCloudNoDS(new pcl::PointCloud<PointType>());
+        //pcl::PointCloud<PointType>::Ptr frameMapCloudNoDS(new pcl::PointCloud<PointType>());
         //pcl::PointCloud<PointType>::Ptr outlierMapCloudNoDS(new pcl::PointCloud<PointType>());
         for(int i = 0; i < surfCloudKeyFramesNoDS.size(); i++) {
-            *frameMapCloudNoDS = *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
-            *frameMapCloudNoDS +=    *transformPointCloud(surfCloudKeyFramesNoDS[i], &cloudKeyPoses6D->points[i]);
-            pcl::io::savePCDFileASCII(fileDirectory+"localMap" + std::to_string(i) +  ".pcd", *frameMapCloudNoDS);
+            //*frameMapCloudNoDS = *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
+            //*frameMapCloudNoDS +=    *transformPointCloud(surfCloudKeyFramesNoDS[i], &cloudKeyPoses6D->points[i]);
+            //pcl::io::savePCDFileASCII(fileDirectory+"localMap" + std::to_string(i) +  ".pcd", *frameMapCloudNoDS);
 
-            //*cornerMapCloudNoDS  += *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
-            //*surfMapCloudNoDS +=    *transformPointCloud(surfCloudKeyFramesNoDS[i],     &cloudKeyPoses6D->points[i]);
+            *cornerMapCloudNoDS  += *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
+            *surfMapCloudNoDS +=    *transformPointCloud(surfCloudKeyFramesNoDS[i],     &cloudKeyPoses6D->points[i]);
             //*outlierMapCloudNoDS += *transformPointCloud(outlierCloudKeyFramesNoDS[i],  &cloudKeyPoses6D->points[i]);
         }
-        //pcl::io::savePCDFileASCII(fileDirectory+"cornerMapNoDS.pcd", *cornerMapCloudNoDS);
-        //pcl::io::savePCDFileASCII(fileDirectory+"surfaceMapNoDS.pcd", *surfMapCloudNoDS);
+        pcl::io::savePCDFileASCII(fileDirectory+"cornerMapNoDS.pcd", *cornerMapCloudNoDS);
+        pcl::io::savePCDFileASCII(fileDirectory+"surfaceMapNoDS.pcd", *surfMapCloudNoDS);
         //pcl::io::savePCDFileASCII(fileDirectory+"trajectoryNoDS.pcd", *outlierMapCloudNoDS);
     }
 
