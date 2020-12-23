@@ -815,22 +815,22 @@ public:
         pcl::io::savePCDFileASCII(fileDirectory+"trajectory.pcd", *cloudKeyPoses3D);
         pcl::io::savePCDFileASCII(fileDirectory+"final_trajectory.pcd", *cloudKeyPoses6D);
 
-        pcl::PointCloud<PointType>::Ptr cornerMapCloudNoDS(new pcl::PointCloud<PointType>());
-        pcl::PointCloud<PointType>::Ptr surfMapCloudNoDS(new pcl::PointCloud<PointType>());
+        //pcl::PointCloud<PointType>::Ptr cornerMapCloudNoDS(new pcl::PointCloud<PointType>());
+        //pcl::PointCloud<PointType>::Ptr surfMapCloudNoDS(new pcl::PointCloud<PointType>());
 
         //pcl::PointCloud<PointType>::Ptr frameMapCloudNoDS(new pcl::PointCloud<PointType>());
         //pcl::PointCloud<PointType>::Ptr outlierMapCloudNoDS(new pcl::PointCloud<PointType>());
-        for(int i = 0; i < surfCloudKeyFramesNoDS.size(); i++) {
+        //for(int i = surfCloudKeyFramesNoDS.size() / 2; i < surfCloudKeyFramesNoDS.size(); i++) {
             //*frameMapCloudNoDS = *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
             //*frameMapCloudNoDS +=    *transformPointCloud(surfCloudKeyFramesNoDS[i], &cloudKeyPoses6D->points[i]);
             //pcl::io::savePCDFileASCII(fileDirectory+"localMap" + std::to_string(i) +  ".pcd", *frameMapCloudNoDS);
 
-            *cornerMapCloudNoDS  += *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
-            *surfMapCloudNoDS +=    *transformPointCloud(surfCloudKeyFramesNoDS[i],     &cloudKeyPoses6D->points[i]);
+            //*cornerMapCloudNoDS  += *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
+            //*surfMapCloudNoDS +=    *transformPointCloud(surfCloudKeyFramesNoDS[i],     &cloudKeyPoses6D->points[i]);
             //*outlierMapCloudNoDS += *transformPointCloud(outlierCloudKeyFramesNoDS[i],  &cloudKeyPoses6D->points[i]);
-        }
-        pcl::io::savePCDFileASCII(fileDirectory+"cornerMapNoDS.pcd", *cornerMapCloudNoDS);
-        pcl::io::savePCDFileASCII(fileDirectory+"surfaceMapNoDS.pcd", *surfMapCloudNoDS);
+        //}
+        //pcl::io::savePCDFileASCII(fileDirectory+"cornerMapNoDS.pcd", *cornerMapCloudNoDS);
+        //pcl::io::savePCDFileASCII(fileDirectory+"surfaceMapNoDS.pcd", *surfMapCloudNoDS);
         //pcl::io::savePCDFileASCII(fileDirectory+"trajectoryNoDS.pcd", *outlierMapCloudNoDS);
     }
 
@@ -1697,6 +1697,8 @@ public:
 
         cornerCloudKeyFramesNoDS.push_back(thisCornerNDSKeyFrame);
         surfCloudKeyFramesNoDS.push_back(thisSurfNDSKeyFrame);
+        pcl::io::savePCDFileBinary("/home/g800g1/LocalData/tmp/frm_" + std::to_string(iPublishId) + ".pcd", *laserCloudRaw);
+        iPublishId++;
         //outlierCloudKeyFramesNoDS.push_back(laserCloudOutlierLast);
     } // saveKeyFramesAndFactor
 
