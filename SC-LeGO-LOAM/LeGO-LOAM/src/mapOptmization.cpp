@@ -91,7 +91,7 @@ private:
 
     vector<pcl::PointCloud<PointType>::Ptr> cornerCloudKeyFramesNoDS;
     vector<pcl::PointCloud<PointType>::Ptr> surfCloudKeyFramesNoDS;
-    //vector<pcl::PointCloud<PointType>::Ptr> outlierCloudKeyFramesNoDS;
+    vector<pcl::PointCloud<PointType>::Ptr> rawCloudKeyFramesNoDS;
 
     deque<pcl::PointCloud<PointType>::Ptr> recentCornerCloudKeyFrames;
     deque<pcl::PointCloud<PointType>::Ptr> recentSurfCloudKeyFrames;
@@ -787,6 +787,7 @@ public:
             rate.sleep();
             publishGlobalMap();
         }
+        /*
         // save final point cloud
         pcl::io::savePCDFileASCII(fileDirectory+"finalCloud.pcd", *globalMapKeyFramesDS);
 
@@ -812,26 +813,27 @@ public:
 
         pcl::io::savePCDFileASCII(fileDirectory+"cornerMap.pcd", *cornerMapCloudDS);
         pcl::io::savePCDFileASCII(fileDirectory+"surfaceMap.pcd", *surfaceMapCloudDS);
-        pcl::io::savePCDFileASCII(fileDirectory+"trajectory.pcd", *cloudKeyPoses3D);
         pcl::io::savePCDFileASCII(fileDirectory+"final_trajectory.pcd", *cloudKeyPoses6D);
-
+        */// temporally close for output raw map
         //pcl::PointCloud<PointType>::Ptr cornerMapCloudNoDS(new pcl::PointCloud<PointType>());
         //pcl::PointCloud<PointType>::Ptr surfMapCloudNoDS(new pcl::PointCloud<PointType>());
 
         //pcl::PointCloud<PointType>::Ptr frameMapCloudNoDS(new pcl::PointCloud<PointType>());
-        //pcl::PointCloud<PointType>::Ptr outlierMapCloudNoDS(new pcl::PointCloud<PointType>());
-        //for(int i = surfCloudKeyFramesNoDS.size() / 2; i < surfCloudKeyFramesNoDS.size(); i++) {
+        pcl::io::savePCDFileASCII(fileDirectory+"trajectory.pcd", *cloudKeyPoses3D);
+        pcl::PointCloud<PointType>::Ptr rawMapCloudNoDS(new pcl::PointCloud<PointType>());
+        for(int i = 0; i < rawCloudKeyFramesNoDS.size(); i++) {
             //*frameMapCloudNoDS = *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
             //*frameMapCloudNoDS +=    *transformPointCloud(surfCloudKeyFramesNoDS[i], &cloudKeyPoses6D->points[i]);
             //pcl::io::savePCDFileASCII(fileDirectory+"localMap" + std::to_string(i) +  ".pcd", *frameMapCloudNoDS);
 
             //*cornerMapCloudNoDS  += *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
             //*surfMapCloudNoDS +=    *transformPointCloud(surfCloudKeyFramesNoDS[i],     &cloudKeyPoses6D->points[i]);
-            //*outlierMapCloudNoDS += *transformPointCloud(outlierCloudKeyFramesNoDS[i],  &cloudKeyPoses6D->points[i]);
-        //}
-        //pcl::io::savePCDFileASCII(fileDirectory+"cornerMapNoDS.pcd", *cornerMapCloudNoDS);
-        //pcl::io::savePCDFileASCII(fileDirectory+"surfaceMapNoDS.pcd", *surfMapCloudNoDS);
-        //pcl::io::savePCDFileASCII(fileDirectory+"trajectoryNoDS.pcd", *outlierMapCloudNoDS);
+            *rawMapCloudNoDS += *transformPointCloud(rawCloudKeyFramesNoDS[i],  &cloudKeyPoses6D->points[i]);
+        }
+        //pcl::io::savePCDFileBinary(fileDirectory+"cornerMapNoDS.pcd", *cornerMapCloudNoDS);
+        //pcl::io::savePCDFileBinary(fileDirectory+"surfaceMapNoDS.pcd", *surfMapCloudNoDS);
+        pcl::io::savePCDFileBinaryCompressed(fileDirectory+"rawCloudKeyFramesNoDS.pcd", *rawMapCloudNoDS);
+
     }
 
     void publishGlobalMap(){
@@ -1669,12 +1671,14 @@ public:
         pcl::PointCloud<PointType>::Ptr thisOutlierKeyFrame(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr thisCornerNDSKeyFrame(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr thisSurfNDSKeyFrame(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr thisRawNDSKeyFrame(new pcl::PointCloud<PointType>());
 
         pcl::copyPointCloud(*laserCloudCornerLastDS,  *thisCornerKeyFrame);
         pcl::copyPointCloud(*laserCloudSurfLastDS,    *thisSurfKeyFrame);
         pcl::copyPointCloud(*laserCloudOutlierLastDS, *thisOutlierKeyFrame);
-        pcl::copyPointCloud(*laserCloudCornerLast, *thisCornerNDSKeyFrame);
-        pcl::copyPointCloud(*laserCloudSurfLast, *thisSurfNDSKeyFrame);
+        //pcl::copyPointCloud(*laserCloudCornerLast, *thisCornerNDSKeyFrame);
+        //pcl::copyPointCloud(*laserCloudSurfLast, *thisSurfNDSKeyFrame);
+        pcl::copyPointCloud(*laserCloudRaw, *thisRawNDSKeyFrame);
 
         /* 
             Scan Context loop detector 
@@ -1695,9 +1699,20 @@ public:
         surfCloudKeyFrames.push_back(thisSurfKeyFrame);
         outlierCloudKeyFrames.push_back(thisOutlierKeyFrame);
 
-        cornerCloudKeyFramesNoDS.push_back(thisCornerNDSKeyFrame);
-        surfCloudKeyFramesNoDS.push_back(thisSurfNDSKeyFrame);
-        pcl::io::savePCDFileBinary("/home/g800g1/LocalData/tmp/frm_" + std::to_string(iPublishId) + ".pcd", *laserCloudRaw);
+        float fVal = 0.0f;
+        for (size_t si = 0; si < thisRawNDSKeyFrame->points.size(); si++)
+        {
+            PointType& ptPt = thisRawNDSKeyFrame->points.at(si);
+            fVal = ptPt.x;
+            ptPt.x = ptPt.y;
+            ptPt.y = ptPt.z;
+            ptPt.z = fVal;
+        }
+        //cornerCloudKeyFramesNoDS.push_back(thisCornerNDSKeyFrame);
+        //surfCloudKeyFramesNoDS.push_back(thisSurfNDSKeyFrame);
+        rawCloudKeyFramesNoDS.push_back(thisRawNDSKeyFrame);
+        //pcl::io::savePCDFileBinary("/home/g800g1/LocalData/tmp/frm_" + std::to_string(iPublishId) + ".pcd", *laserCloudRaw);
+        //pcl::io::savePCDFileBinary("/home/g800g1/LocalData/tmp/ds_" + std::to_string(iPublishId) + ".pcd", *thisCornerNDSKeyFrame + *thisSurfNDSKeyFrame);
         iPublishId++;
         //outlierCloudKeyFramesNoDS.push_back(laserCloudOutlierLast);
     } // saveKeyFramesAndFactor
