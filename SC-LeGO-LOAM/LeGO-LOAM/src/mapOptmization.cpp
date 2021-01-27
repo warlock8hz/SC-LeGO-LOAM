@@ -630,6 +630,56 @@ public:
         return cloudOut;
     }
 
+    bool pcdPts(PointType* thisPoint){
+        float verticalAngle = atan2(thisPoint->z, sqrt(thisPoint->x * thisPoint->x + thisPoint->y * thisPoint->y)) * 180.0 / M_PI;
+        //rowIdn = (verticalAngle + ang_bottom) / ang_res_y;
+        // 0.26179938779 = 15.0/180.0*PI
+        if (verticalAngle > 0.26179938779 || verticalAngle < -0.26179938779)
+            return true;
+        return false;
+    }
+    pcl::PointCloud<PointType>::Ptr reserveOnlyVerticalPcd_transformPointCloud(pcl::PointCloud<PointType>::Ptr cloudIn,
+                                                                               PointTypePose* transformIn){
+
+
+        pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
+
+        PointType *pointFrom;
+        PointType pointTo;
+
+        int cloudSize = cloudIn->points.size();
+        int cloudActualSize = 0;
+        for (int i = 0; i < cloudSize; ++i) {
+            pointFrom = &cloudIn->points[i];
+            if (pcdPts(pointFrom))
+                cloudActualSize++;
+        }
+
+        cloudOut->resize(cloudActualSize);
+        int actualIndex = 0;
+        for (int i = 0; i < cloudSize; ++i){
+
+            pointFrom = &cloudIn->points[i];
+            if (pcdPts(pointFrom)) {
+                float x1 = cos(transformIn->yaw) * pointFrom->x - sin(transformIn->yaw) * pointFrom->y;
+                float y1 = sin(transformIn->yaw) * pointFrom->x + cos(transformIn->yaw) * pointFrom->y;
+                float z1 = pointFrom->z;
+
+                float x2 = x1;
+                float y2 = cos(transformIn->roll) * y1 - sin(transformIn->roll) * z1;
+                float z2 = sin(transformIn->roll) * y1 + cos(transformIn->roll) * z1;
+
+                pointTo.x = cos(transformIn->pitch) * x2 + sin(transformIn->pitch) * z2 + transformIn->x;
+                pointTo.y = y2 + transformIn->y;
+                pointTo.z = -sin(transformIn->pitch) * x2 + cos(transformIn->pitch) * z2 + transformIn->z;
+                pointTo.intensity = pointFrom->intensity;
+
+                cloudOut->points[actualIndex] = pointTo;
+                actualIndex++;
+            }
+        }
+        return cloudOut;
+    }
     pcl::PointCloud<PointType>::Ptr transformPointCloud(pcl::PointCloud<PointType>::Ptr cloudIn, PointTypePose* transformIn){
 
         pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
@@ -819,7 +869,8 @@ public:
         //pcl::PointCloud<PointType>::Ptr surfMapCloudNoDS(new pcl::PointCloud<PointType>());
 
         //pcl::PointCloud<PointType>::Ptr frameMapCloudNoDS(new pcl::PointCloud<PointType>());
-        pcl::io::savePCDFileASCII(fileDirectory+"trajectory.pcd", *cloudKeyPoses3D);
+        pcl::io::savePCDFileASCII(fileDirectory+"trajectory3D.pcd", *cloudKeyPoses3D);
+        pcl::io::savePCDFileASCII(fileDirectory+"trajectory6D.pcd", *cloudKeyPoses6D);
         pcl::PointCloud<PointType>::Ptr rawMapCloudNoDS(new pcl::PointCloud<PointType>());
         for(int i = 0; i < rawCloudKeyFramesNoDS.size(); i++) {
             //*frameMapCloudNoDS = *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
@@ -828,11 +879,11 @@ public:
 
             //*cornerMapCloudNoDS  += *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
             //*surfMapCloudNoDS +=    *transformPointCloud(surfCloudKeyFramesNoDS[i],     &cloudKeyPoses6D->points[i]);
-            *rawMapCloudNoDS += *transformPointCloud(rawCloudKeyFramesNoDS[i],  &cloudKeyPoses6D->points[i]);
+            *rawMapCloudNoDS += *reserveOnlyVerticalPcd_transformPointCloud(rawCloudKeyFramesNoDS[i],  &cloudKeyPoses6D->points[i]);
         }
         //pcl::io::savePCDFileBinary(fileDirectory+"cornerMapNoDS.pcd", *cornerMapCloudNoDS);
         //pcl::io::savePCDFileBinary(fileDirectory+"surfaceMapNoDS.pcd", *surfMapCloudNoDS);
-        pcl::io::savePCDFileBinaryCompressed(fileDirectory+"rawCloudKeyFramesNoDS.pcd", *rawMapCloudNoDS);
+        pcl::io::savePCDFileBinary(fileDirectory+"rawCloudKeyFramesNoDS.pcd", *rawMapCloudNoDS);
 
     }
 
