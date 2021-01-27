@@ -631,18 +631,24 @@ public:
     }
 
     bool distFilter(PointType* thisPoint, float distTHSq){
-        float distSq = thisPoint->x * thisPoint->x + thisPoint->y * thisPoint->y + thisPoint->z * thisPoint->z;
+        float ox(-0.000158f), oy(-0.255638f), oz(-0.172875);
+
+        float distSq = pow(thisPoint->x - ox, 2.0f) + pow(thisPoint->y - oy, 2.0f) + pow(thisPoint->z - oz, 2.0f);
         if (distSq < distTHSq)
             return true;
         return false;
     }
     bool pcdPts(PointType* thisPoint){
-        float verticalAngle = atan2(thisPoint->z, sqrt(thisPoint->x * thisPoint->x + thisPoint->y * thisPoint->y)); 
-        //rowIdn = (verticalAngle + ang_bottom) / ang_res_y;
-        // 0.26179938779 = 15.0/180.0*PI
-        if (verticalAngle > 0.26179938779)
-            return true;
-        if (verticalAngle < -0.26179938779)
+//        float ox(-0.000158f), oy(-0.255638f), oz(-0.172875);
+//        float verticalAngle = atan2(thisPoint->z - oz, sqrt(pow(thisPoint->x - ox, 2.0f) + pow(thisPoint->y - oy, 2.0f)));
+//        //rowIdn = (verticalAngle + ang_bottom) / ang_res_y;
+//        // 0.26179938779 = 15.0/180.0*PI
+//        if (verticalAngle > 0.26179938779)
+//            return true;
+//        if (verticalAngle < -0.26179938779)
+//            return true;
+        int iScanID = round((thisPoint->intensity - floor(thisPoint->intensity)) * 100);
+        if (iScanID > 15)
             return true;
         return false;
     }
@@ -883,7 +889,8 @@ public:
         pcl::io::savePCDFileASCII(fileDirectory+"trajectory3D.pcd", *cloudKeyPoses3D);
         pcl::io::savePCDFileASCII(fileDirectory+"trajectory6D.pcd", *cloudKeyPoses6D);
         pcl::PointCloud<PointType>::Ptr rawMapCloudNoDS(new pcl::PointCloud<PointType>());
-        pcl::PointCloud<PointType>::Ptr rawMapCloudNoDSDF(new pcl::PointCloud<PointType>());// DF for distance filter
+        pcl::PointCloud<PointType>::Ptr rawPCDMapCloudNoDS(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr rawPCDMapCloudNoDSDF(new pcl::PointCloud<PointType>());// DF for distance filter
         for(int i = 0; i < rawCloudKeyFramesNoDS.size(); i++) {
             //*frameMapCloudNoDS = *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
             //*frameMapCloudNoDS +=    *transformPointCloud(surfCloudKeyFramesNoDS[i], &cloudKeyPoses6D->points[i]);
@@ -891,13 +898,15 @@ public:
 
             //*cornerMapCloudNoDS  += *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
             //*surfMapCloudNoDS +=    *transformPointCloud(surfCloudKeyFramesNoDS[i],     &cloudKeyPoses6D->points[i]);
-            *rawMapCloudNoDS += *reserveOnlyVerticalPcd_transformPointCloud(rawCloudKeyFramesNoDS[i],  &cloudKeyPoses6D->points[i], 10000.0f);//100.0 distance filter
-            *rawMapCloudNoDSDF += *reserveOnlyVerticalPcd_transformPointCloud(rawCloudKeyFramesNoDS[i],  &cloudKeyPoses6D->points[i], 36.0f);//6.0 distance filter
+            *rawMapCloudNoDS += *transformPointCloud(rawCloudKeyFramesNoDS[i], &cloudKeyPoses6D->points[i]);
+            *rawPCDMapCloudNoDS += *reserveOnlyVerticalPcd_transformPointCloud(rawCloudKeyFramesNoDS[i],  &cloudKeyPoses6D->points[i], 10000.0f);//100.0 distance filter
+            *rawPCDMapCloudNoDSDF += *reserveOnlyVerticalPcd_transformPointCloud(rawCloudKeyFramesNoDS[i],  &cloudKeyPoses6D->points[i], 36.0f);//6.0 distance filter
         }
         //pcl::io::savePCDFileBinary(fileDirectory+"cornerMapNoDS.pcd", *cornerMapCloudNoDS);
         //pcl::io::savePCDFileBinary(fileDirectory+"surfaceMapNoDS.pcd", *surfMapCloudNoDS);
         pcl::io::savePCDFileBinary(fileDirectory+"rawCloudKeyFramesNoDS.pcd", *rawMapCloudNoDS);
-        pcl::io::savePCDFileBinary(fileDirectory+"rawCloudKeyFramesNoDSDF.pcd", *rawMapCloudNoDSDF);
+        pcl::io::savePCDFileBinary(fileDirectory+"rawPCDCloudKeyFramesNoDS.pcd", *rawPCDMapCloudNoDS);
+        pcl::io::savePCDFileBinary(fileDirectory+"rawPCDCloudKeyFramesNoDSDF.pcd", *rawPCDMapCloudNoDSDF);
     }
 
     void publishGlobalMap(){
