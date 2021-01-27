@@ -630,16 +630,24 @@ public:
         return cloudOut;
     }
 
+    bool distFilter(PointType* thisPoint, float distTHSq){
+        float distSq = thisPoint->x * thisPoint->x + thisPoint->y * thisPoint->y + thisPoint->z * thisPoint->z;
+        if (distSq < distTHSq)
+            return true;
+        return false;
+    }
     bool pcdPts(PointType* thisPoint){
-        float verticalAngle = atan2(thisPoint->z, sqrt(thisPoint->x * thisPoint->x + thisPoint->y * thisPoint->y)) * 180.0 / M_PI;
+        float verticalAngle = atan2(thisPoint->z, sqrt(thisPoint->x * thisPoint->x + thisPoint->y * thisPoint->y)); 
         //rowIdn = (verticalAngle + ang_bottom) / ang_res_y;
         // 0.26179938779 = 15.0/180.0*PI
-        if (verticalAngle > 0.26179938779 || verticalAngle < -0.26179938779)
+        if (verticalAngle > 0.26179938779)
+            return true;
+        if (verticalAngle < -0.26179938779)
             return true;
         return false;
     }
     pcl::PointCloud<PointType>::Ptr reserveOnlyVerticalPcd_transformPointCloud(pcl::PointCloud<PointType>::Ptr cloudIn,
-                                                                               PointTypePose* transformIn){
+                                                                               PointTypePose* transformIn, float distTHSq){
 
 
         pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
@@ -652,7 +660,8 @@ public:
         for (int i = 0; i < cloudSize; ++i) {
             pointFrom = &cloudIn->points[i];
             if (pcdPts(pointFrom))
-                cloudActualSize++;
+                if (distFilter(pointFrom, distTHSq)) // 6.0 m filter
+                    cloudActualSize++;
         }
 
         cloudOut->resize(cloudActualSize);
@@ -660,23 +669,25 @@ public:
         for (int i = 0; i < cloudSize; ++i){
 
             pointFrom = &cloudIn->points[i];
-            if (pcdPts(pointFrom)) {
-                float x1 = cos(transformIn->yaw) * pointFrom->x - sin(transformIn->yaw) * pointFrom->y;
-                float y1 = sin(transformIn->yaw) * pointFrom->x + cos(transformIn->yaw) * pointFrom->y;
-                float z1 = pointFrom->z;
+            if (pcdPts(pointFrom))
+                if (distFilter(pointFrom, distTHSq))
+                {
+                    float x1 = cos(transformIn->yaw) * pointFrom->x - sin(transformIn->yaw) * pointFrom->y;
+                    float y1 = sin(transformIn->yaw) * pointFrom->x + cos(transformIn->yaw) * pointFrom->y;
+                    float z1 = pointFrom->z;
 
-                float x2 = x1;
-                float y2 = cos(transformIn->roll) * y1 - sin(transformIn->roll) * z1;
-                float z2 = sin(transformIn->roll) * y1 + cos(transformIn->roll) * z1;
+                    float x2 = x1;
+                    float y2 = cos(transformIn->roll) * y1 - sin(transformIn->roll) * z1;
+                    float z2 = sin(transformIn->roll) * y1 + cos(transformIn->roll) * z1;
 
-                pointTo.x = cos(transformIn->pitch) * x2 + sin(transformIn->pitch) * z2 + transformIn->x;
-                pointTo.y = y2 + transformIn->y;
-                pointTo.z = -sin(transformIn->pitch) * x2 + cos(transformIn->pitch) * z2 + transformIn->z;
-                pointTo.intensity = pointFrom->intensity;
+                    pointTo.x = cos(transformIn->pitch) * x2 + sin(transformIn->pitch) * z2 + transformIn->x;
+                    pointTo.y = y2 + transformIn->y;
+                    pointTo.z = -sin(transformIn->pitch) * x2 + cos(transformIn->pitch) * z2 + transformIn->z;
+                    pointTo.intensity = pointFrom->intensity;
 
-                cloudOut->points[actualIndex] = pointTo;
-                actualIndex++;
-            }
+                    cloudOut->points[actualIndex] = pointTo;
+                    actualIndex++;
+                }
         }
         return cloudOut;
     }
@@ -872,6 +883,7 @@ public:
         pcl::io::savePCDFileASCII(fileDirectory+"trajectory3D.pcd", *cloudKeyPoses3D);
         pcl::io::savePCDFileASCII(fileDirectory+"trajectory6D.pcd", *cloudKeyPoses6D);
         pcl::PointCloud<PointType>::Ptr rawMapCloudNoDS(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr rawMapCloudNoDSDF(new pcl::PointCloud<PointType>());// DF for distance filter
         for(int i = 0; i < rawCloudKeyFramesNoDS.size(); i++) {
             //*frameMapCloudNoDS = *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
             //*frameMapCloudNoDS +=    *transformPointCloud(surfCloudKeyFramesNoDS[i], &cloudKeyPoses6D->points[i]);
@@ -879,12 +891,13 @@ public:
 
             //*cornerMapCloudNoDS  += *transformPointCloud(cornerCloudKeyFramesNoDS[i],   &cloudKeyPoses6D->points[i]);
             //*surfMapCloudNoDS +=    *transformPointCloud(surfCloudKeyFramesNoDS[i],     &cloudKeyPoses6D->points[i]);
-            *rawMapCloudNoDS += *reserveOnlyVerticalPcd_transformPointCloud(rawCloudKeyFramesNoDS[i],  &cloudKeyPoses6D->points[i]);
+            *rawMapCloudNoDS += *reserveOnlyVerticalPcd_transformPointCloud(rawCloudKeyFramesNoDS[i],  &cloudKeyPoses6D->points[i], 10000.0f);//100.0 distance filter
+            *rawMapCloudNoDSDF += *reserveOnlyVerticalPcd_transformPointCloud(rawCloudKeyFramesNoDS[i],  &cloudKeyPoses6D->points[i], 36.0f);//6.0 distance filter
         }
         //pcl::io::savePCDFileBinary(fileDirectory+"cornerMapNoDS.pcd", *cornerMapCloudNoDS);
         //pcl::io::savePCDFileBinary(fileDirectory+"surfaceMapNoDS.pcd", *surfMapCloudNoDS);
         pcl::io::savePCDFileBinary(fileDirectory+"rawCloudKeyFramesNoDS.pcd", *rawMapCloudNoDS);
-
+        pcl::io::savePCDFileBinary(fileDirectory+"rawCloudKeyFramesNoDSDF.pcd", *rawMapCloudNoDSDF);
     }
 
     void publishGlobalMap(){
